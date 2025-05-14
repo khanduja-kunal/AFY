@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Downloader</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios@1.6.8/dist/axios.min.js"></script>
+</head>
+<body class="bg-gray-100">
+  <nav class="bg-blue-600 text-white p-4">
+    <div class="container mx-auto flex justify-between items-center">
+      <h1 class="text-xl font-bold">YouTube Downloader</h1>
+      <div id="nav-links" class="space-x-4">
+        <button onclick="showView('home')" class="hover:underline">Home</button>
+        <button onclick="showView('history')" class="hover:underline">History</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mx-auto p-4">
+    <div id="error" class="hidden bg-red-100 text-red-700 p-4 rounded mb-4"></div>
+
+    <!-- Home/Download View -->
+    <div id="home-view" class="view">
+      <div class="max-w-lg mx-auto bg-white p-6 rounded shadow">
+        <h2 class="text-2xl font-bold mb-4">Download YouTube Video</h2>
+        <div class="mb-4">
+          <label class="block text-gray-700">YouTube URL</label>
+          <input
+            type="text"
+            id="download-url"
+            onblur="fetchMetadata()"
+            class="w-full p-2 border rounded"
+            placeholder="https://www.youtube.com/watch?v=..."
+          >
+        </div>
+        <div id="metadata" class="hidden mb-4 p-4 bg-gray-50 rounded"></div>
+        <form id="download-form">
+          <div class="mb-4">
+            <label class="block text-gray-700">Format</label>
+            <select id="download-format" class="w-full p-2 border rounded">
+              <option value="mp4">MP4</option>
+              <option value="webm">WebM</option>
+              <option value="mkv">MKV</option>
+              <option value="mp3">MP3</option>
+            </select>
+          </div>
+          <div class="mb-4">
+            <label class="block text-gray-700">Quality</label>
+            <select id="download-quality" class="w-full p-2 border rounded">
+              <option value="360p">360p</option>
+              <option value="480p">480p</option>
+              <option value="720p">720p</option>
+              <option value="1080p">1080p</option>
+              <option value="4k">4k</option>
+            </select>
+          </div>
+          <button
+            type="submit"
+            class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700"
+            onclick="startDownload(event)"
+          >
+            Start Download
+          </button>
+        </form>
+        <div id="download-message" class="mt-4 text-green-600 hidden"></div>
+      </div>
+    </div>
+
+    <!-- Login View -->
+    <div id="login-view" class="view hidden">
+      <div class="max-w-md mx-auto bg-white p-6 rounded shadow">
+        <h2 class="text-2xl font-bold mb-4">Login</h2>
+        <form id="login-form">
+          <div class="mb-4">
+            <label class="block text-gray-700">Email</label>
+            <input
+              type="email"
+              id="login-email"
+              class="w-full p-2 border rounded"
+              required
+            >
+          </div>
+          <div class="mb-4">
+            <label class="block text-gray-700">Password</label>
+            <input
+              type="password"
+              id="login-password"
+              class="w-full p-2 border rounded"
+              required
+            >
+          </div>
+          <button
+            type="submit"
+            class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700"
+            onclick="login(event)"
+          >
+            Login
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Register View -->
+    <div id="register-view" class="view hidden">
+      <div class="max-w-md mx-auto bg-white p-6 rounded shadow">
+        <h2 class="text-2xl font-bold mb-4">Register</h2>
+        <form id="register-form">
+          <div class="mb-4">
+            <label class="block text-gray-700">Email</label>
+            <input
+              type="email"
+              id="register-email"
+              class="w-full p-2 border rounded"
+              required
+            >
+          </div>
+          <div class="mb-4">
+            <label class="block text-gray-700">Password</label>
+            <input
+              type="password"
+              id="register-password"
+              class="w-full p-2 border rounded"
+              required
+            >
+          </div>
+          <button
+            type="submit"
+            class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700"
+            onclick="register(event)"
+          >
+            Register
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- History View -->
+    <div id="history-view" class="view hidden">
+      <div class="bg-white p-6 rounded shadow">
+        <h2 class="text-2xl font-bold mb-4">Download History</h2>
+        <table id="history-table" class="w-full border-collapse">
+          <thead>
+            <tr class="bg-gray-200">
+              <th class="border p-2">URL</th>
+              <th class="border p-2">Status</th>
+              <th class="border p-2">Downloaded At</th>
+              <th class="border p-2">Filename</th>
+              <th class="border p-2 ${user && user.is_admin ? '' : 'hidden'}">User ID</th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Profile View -->
+    <div id="profile-view" class="view hidden">
+      <div class="max-w-md mx-auto bg-white p-6 rounded shadow">
+        <h2 class="text-2xl font-bold mb-4">Profile</h2>
+        <form id="profile-form">
+          <div class="mb-4">
+            <label class="block text-gray-700">Email</label>
+            <input
+              type="email"
+              id="profile-email"
+              class="w-full p-2 border rounded"
+              required
+            >
+          </div>
+          <div class="mb-4">
+            <label class="block text-gray-700">New Password (optional)</label>
+            <input
+              type="password"
+              id="profile-password"
+              class="w-full p-2 border rounded"
+              placeholder="Leave blank to keep current password"
+            >
+          </div>
+          <button
+            type="submit"
+            class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700"
+            onclick="updateProfile(event)"
+          >
+            Update Profile
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Admin View -->
+    <div id="admin-view" class="view hidden">
+      <div class="bg-white p-6 rounded shadow">
+        <h2 class="text-2xl font-bold mb-4">Admin Panel - Users</h2>
+        <table id="admin-table" class="w-full border-collapse">
+          <thead>
+            <tr class="bg-gray-200">
+              <th class="border p-2">ID</th>
+              <th class="border p-2">Email</th>
+              <th class="border p-2">Admin</th>
+              <th class="border p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="admin-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = "http://localhost:8000"; // Backend API URL
+    let user = null;
+
+    // Axios instance with JWT token for protected routes
+    const axiosInstance = axios.create({
+      baseURL: API_BASE_URL,
+      headers: { "Content-Type": "application/json" },
+    });
+
+    axiosInstance.interceptors.request.use((config) => {
+      const unprotectedRoutes = [
+        '/auth/token',
+        '/auth/register',
+        '/metadata'
+      ];
+      const isUnprotected = unprotectedRoutes.some(route => config.url.includes(route));
+      if (!isUnprotected) {
+        const token = localStorage.getItem("token");
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      }
+      return config;
+    });
+
+    // Show a specific view
+    function showView(viewId) {
+      document.querySelectorAll(".view").forEach(view => view.classList.add("hidden"));
+      const viewElement = document.getElementById(`${viewId}-view`);
+      if (viewElement) {
+        viewElement.classList.remove("hidden");
+      } else {
+        console.error(`View with ID ${viewId}-view not found`);
+      }
+      document.getElementById("error").classList.add("hidden");
+      document.getElementById("download-message").classList.add("hidden");
+
+      if (viewId === "history") fetchHistory();
+      if (viewId === "profile" && user) {
+        document.getElementById("profile-email").value = user.email;
+        document.getElementById("profile-password").value = "";
+      }
+      if (viewId === "admin") fetchUsers();
+    }
+
+    // Update navigation links based on user state
+    function updateNav() {
+      const navLinks = document.getElementById("nav-links");
+      if (user) {
+        navLinks.innerHTML = `
+          <button onclick="showView('home')" class="hover:underline">Home</button>
+          <button onclick="showView('history')" class="hover:underline">History</button>
+          <button onclick="showView('profile')" class="hover:underline">Profile</button>
+          ${user.is_admin ? `<button onclick="showView('admin')" class="hover:underline">Admin</button>` : ""}
+          <button onclick="logout()" class="hover:underline">Logout</button>
+        `;
+      } else {
+        navLinks.innerHTML = `
+          <button onclick="showView('home')" class="hover:underline">Home</button>
+          <button onclick="showView('login')" class="hover:underline">Login</button>
+          <button onclick="showView('register')" class="hover:underline">Register</button>
+        `;
+      }
+    }
+
+    // Show error message
+    function showError(message) {
+      const errorDiv = document.getElementById("error");
+      errorDiv.textContent = message;
+      errorDiv.classList.remove("hidden");
+    }
+
+    // Check user on page load
+    async function checkUser() {
+      const token = localStorage.getItem("token");
+      if (token) {
+        try {
+          const res = await axiosInstance.get("/users/me");
+          user = res.data;
+          updateNav();
+          showView("home");
+        } catch (err) {
+          localStorage.removeItem("token");
+          user = null;
+          updateNav();
+          showView("home");
+        }
+      } else {
+        updateNav();
+        showView("home");
+      }
+    }
+
+    // Login
+    async function login(event) {
+      event.preventDefault();
+      const email = document.getElementById("login-email").value;
+      const password = document.getElementById("login-password").value;
+      try {
+        const res = await axiosInstance.post(
+          "/auth/token",
+          new URLSearchParams({ username: email, password }).toString(),
+          { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+        );
+        localStorage.setItem("token", res.data.access_token);
+        const userRes = await axiosInstance.get("/users/me");
+        user = userRes.data;
+        updateNav();
+        showView("home");
+      } catch (err) {
+        showError(err.response?.data?.detail || "Login failed");
+      }
+    }
+
+    // Register
+    async function register(event) {
+      event.preventDefault();
+      const email = document.getElementById("register-email").value;
+      const password = document.getElementById("register-password").value;
+      try {
+        const res = await axiosInstance.post("/auth/register", { email, password });
+        localStorage.setItem("token", res.data.access_token);
+        const userRes = await axiosInstance.get("/users/me");
+        user = userRes.data;
+        document.getElementById("register-email").value = "";
+        document.getElementById("register-password").value = "";
+        updateNav();
+        showView("home");
+      } catch (err) {
+        showError(err.response?.data?.detail || "Registration failed");
+      }
+    }
+
+    // Logout
+    function logout() {
+      localStorage.removeItem("token");
+      user = null;
+      updateNav();
+      showView("home");
+    }
+
+    // Fetch metadata
+    async function fetchMetadata() {
+      const url = document.getElementById("download-url").value;
+      if (!url) return;
+      try {
+        const res = await axiosInstance.get(`/metadata?url=${encodeURIComponent(url)}`);
+        const metadata = res.data;
+        const metadataDiv = document.getElementById("metadata");
+        metadataDiv.innerHTML = `
+          <h3 class="font-bold">${metadata.title}</h3>
+          <p>Channel: ${metadata.channel}</p>
+          <p>Duration: ${metadata.duration} seconds</p>
+          <img src="${metadata.thumbnail}" alt="Thumbnail" class="w-32 mt-2">
+        `;
+        metadataDiv.classList.remove("hidden");
+        document.getElementById("error").classList.add("hidden");
+      } catch (err) {
+        showError(err.response?.data?.detail || "Failed to fetch metadata");
+        document.getElementById("metadata").classList.add("hidden");
+      }
+    }
+
+    // Start download
+    async function startDownload(event) {
+      event.preventDefault();
+      if (!user) {
+        showError("Please log in to download videos");
+        showView("login");
+        return;
+      }
+      const url = document.getElementById("download-url").value;
+      const format = document.getElementById("download-format").value;
+      const quality = document.getElementById("download-quality").value;
+      try {
+        const res = await axiosInstance.post("/download/", { url, format, quality });
+        const messageDiv = document.getElementById("download-message");
+        messageDiv.innerHTML = `
+          Download started! Task ID: ${res.data.task_id}
+          <button onclick="checkDownloadStatus(${res.data.task_id})" class="ml-2 text-blue-600 hover:underline">Check Status</button>
+        `;
+        messageDiv.classList.remove("hidden");
+        document.getElementById("download-url").value = "";
+        document.getElementById("metadata").classList.add("hidden");
+        document.getElementById("error").classList.add("hidden");
+      } catch (err) {
+        showError(err.response?.data?.detail || "Download failed");
+      }
+    }
+
+    // Check download status
+    async function checkDownloadStatus(taskId) {
+      if (!user) {
+        showError("Please log in to check download status");
+        showView("login");
+        return;
+      }
+      try {
+        const res = await axiosInstance.get("/history");
+        const history = res.data;
+        const download = history.find(item => item.id === taskId);
+        if (download) {
+          showError(`Download Status for Task ID ${taskId}: ${download.status}`);
+        } else {
+          showError(`Download with Task ID ${taskId} not found`);
+        }
+      } catch (err) {
+        showError(err.response?.data?.detail || "Failed to fetch download status");
+      }
+    }
+
+    // Fetch download history
+    async function fetchHistory() {
+      if (!user) {
+        showError("Please log in to view history");
+        showView("login");
+        return;
+      }
+      try {
+        const res = await axiosInstance.get("/history");
+        const history = res.data;
+        const tbody = document.getElementById("history-body");
+        tbody.innerHTML = "";
+        history.forEach(item => {
+          const utcDate = new Date(item.downloaded_at);
+          const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000)); // UTC to IST (+5:30)
+          const istString = istDate.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td class="border p-2">${item.url}</td>
+            <td class="border p-2">${item.status}</td>
+            <td class="border p-2">${istString}</td>
+            <td class="border p-2">${item.filename}</td>
+            ${user.is_admin ? `<td class="border p-2">${item.user_id}</td>` : ''}
+          `;
+          tbody.appendChild(row);
+        });
+      } catch (err) {
+        showError(err.response?.data?.detail || "Failed to fetch history");
+      }
+    }
+
+    // Update profile
+    async function updateProfile(event) {
+      event.preventDefault();
+      if (!user) {
+        showError("Please log in to update profile");
+        showView("login");
+        return;
+      }
+      const email = document.getElementById("profile-email").value;
+      const password = document.getElementById("profile-password").value;
+      try {
+        const updateData = { email };
+        if (password) updateData.password = password;
+        const res = await axiosInstance.patch("/users/me", updateData);
+        user = res.data;
+        document.getElementById("profile-password").value = "";
+        showError("Profile updated successfully");
+        showView("profile");
+      } catch (err) {
+        showError(err.response?.data?.detail || "Update failed");
+      }
+    }
+
+    // Fetch users (admin)
+    async function fetchUsers() {
+      if (!user || !user.is_admin) {
+        showError("Access denied: Admin only");
+        showView("home");
+        return;
+      }
+      try {
+        const res = await axiosInstance.get("/admin/users");
+        const users = res.data;
+        const tbody = document.getElementById("admin-body");
+        tbody.innerHTML = "";
+        users.forEach(u => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td class="border p-2">${u.id}</td>
+            <td class="border p-2">${u.email}</td>
+            <td class="border p-2">${u.is_admin ? "Yes" : "No"}</td>
+            <td class="border p-2">
+              <button onclick="viewUser(${u.id})" class="text-blue-600 hover:underline">View</button>
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
+      } catch (err) {
+        showError(err.response?.data?.detail || "Failed to fetch users");
+      }
+    }
+
+    // View user details (admin)
+    async function viewUser(userId) {
+      try {
+        const res = await axiosInstance.get(`/admin/users/${userId}`);
+        const u = res.data;
+        showError(`User ID: ${u.id}, Email: ${u.email}, Admin: ${u.is_admin ? "Yes" : "No"}`);
+      } catch (err) {
+        showError(err.response?.data?.detail || "Failed to fetch user details");
+      }
+    }
+
+    // Initialize
+    checkUser();
+  </script>
+</body>
+</html>
