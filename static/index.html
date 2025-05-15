@@ -56,8 +56,14 @@
               <option value="4k">4k</option>
             </select>
           </div>
+          <div class="mb-4">
+            <label class="block text-gray-700">
+              <input type="checkbox" id="include-transcript" checked> Include Transcript
+            </label>
+          </div>
           <button
             type="submit"
+            id="download-button"
             class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700"
             onclick="startDownload(event)"
           >
@@ -140,16 +146,21 @@
     <div id="history-view" class="view hidden">
       <div class="bg-white p-6 rounded shadow">
         <h2 class="text-2xl font-bold mb-4">Download History</h2>
+        <div id="history-filters" class="flex flex-wrap gap-4 mb-4">
+          <input id="filter-url" type="text" placeholder="Filter URL" class="p-2 border rounded flex-1 min-w-[150px]">
+          <select id="filter-status" class="p-2 border rounded min-w-[120px]">
+            <option value="">All Statuses</option>
+            <option value="Completed">Completed</option>
+            <option value="Failed">Failed</option>
+          </select>
+          <input id="filter-date-start" type="date" placeholder="Start Date" class="p-2 border rounded min-w-[120px]">
+          <input id="filter-date-end" type="date" placeholder="End Date" class="p-2 border rounded min-w-[120px]">
+          <input id="filter-filename" type="text" placeholder="Filter Filename" class="p-2 border rounded flex-1 min-w-[150px]">
+          <input id="filter-user-id" type="text" placeholder="Filter User ID" class="p-2 border rounded min-w-[100px] hidden">
+          <button id="reset-history-filters" class="bg-gray-600 text-white p-2 rounded hover:bg-gray-700">Reset</button>
+        </div>
         <table id="history-table" class="w-full border-collapse">
-          <thead>
-            <tr class="bg-gray-200">
-              <th class="border p-2">URL</th>
-              <th class="border p-2">Status</th>
-              <th class="border p-2">Downloaded At</th>
-              <th class="border p-2">Filename</th>
-              <th class="border p-2 ${user && user.is_admin ? '' : 'hidden'}">User ID</th>
-            </tr>
-          </thead>
+          <thead id="history-head"></thead>
           <tbody id="history-body"></tbody>
         </table>
       </div>
@@ -193,17 +204,28 @@
     <div id="admin-view" class="view hidden">
       <div class="bg-white p-6 rounded shadow">
         <h2 class="text-2xl font-bold mb-4">Admin Panel - Users</h2>
+        <div id="admin-filters" class="flex flex-wrap gap-4 mb-4">
+          <input id="filter-id" type="text" placeholder="Filter ID" class="p-2 border rounded min-w-[100px]">
+          <input id="filter-email" type="text" placeholder="Filter Email" class="p-2 border rounded flex-1 min-w-[150px]">
+          <select id="filter-admin" class="p-2 border rounded min-w-[100px]">
+            <option value="">All</option>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+          <button id="reset-admin-filters" class="bg-gray-600 text-white p-2 rounded hover:bg-gray-700">Reset</button>
+        </div>
         <table id="admin-table" class="w-full border-collapse">
-          <thead>
+          <thead id="admin-head">
             <tr class="bg-gray-200">
-              <th class="border p-2">ID</th>
-              <th class="border p-2">Email</th>
-              <th class="border p-2">Admin</th>
+              <th class="border p-2 cursor-pointer" onclick="sortUsers('id')">ID</th>
+              <th class="border p-2 cursor-pointer" onclick="sortUsers('email')">Email</th>
+              <th class="border p-2 cursor-pointer" onclick="sortUsers('is_admin')">Admin</th>
               <th class="border p-2">Actions</th>
             </tr>
           </thead>
           <tbody id="admin-body"></tbody>
         </table>
+        <div id="user-details" class="hidden mt-4 bg-green-100 text-green-700 p-4 rounded"></div>
       </div>
     </div>
   </div>
@@ -245,6 +267,7 @@
       }
       document.getElementById("error").classList.add("hidden");
       document.getElementById("download-message").classList.add("hidden");
+      document.getElementById("user-details")?.classList.add("hidden");
 
       if (viewId === "history") fetchHistory();
       if (viewId === "profile" && user) {
@@ -279,6 +302,18 @@
       const errorDiv = document.getElementById("error");
       errorDiv.textContent = message;
       errorDiv.classList.remove("hidden");
+    }
+
+    // Show user details
+    function showUserDetails(userData) {
+      const detailsDiv = document.getElementById("user-details");
+      detailsDiv.innerHTML = `
+        <h3 class="text-lg font-semibold mb-2">User Details</h3>
+        <p><strong>User ID:</strong> ${userData.id}</p>
+        <p><strong>Email:</strong> ${userData.email}</p>
+        <p><strong>Admin:</strong> ${userData.is_admin ? "Yes" : "No"}</p>
+      `;
+      detailsDiv.classList.remove("hidden");
     }
 
     // Check user on page load
@@ -383,13 +418,11 @@
       const url = document.getElementById("download-url").value;
       const format = document.getElementById("download-format").value;
       const quality = document.getElementById("download-quality").value;
+      const includeTranscript = document.getElementById("include-transcript").checked;
+      const messageDiv = document.getElementById("download-message");
       try {
-        const res = await axiosInstance.post("/download/", { url, format, quality });
-        const messageDiv = document.getElementById("download-message");
-        messageDiv.innerHTML = `
-          Download started! Task ID: ${res.data.task_id}
-          <button onclick="checkDownloadStatus(${res.data.task_id})" class="ml-2 text-blue-600 hover:underline">Check Status</button>
-        `;
+        await axiosInstance.post("/download/", { url, format, quality, include_transcript: includeTranscript });
+        messageDiv.innerHTML = `Download started! ${includeTranscript ? "Transcript will be included." : ""}`;
         messageDiv.classList.remove("hidden");
         document.getElementById("download-url").value = "";
         document.getElementById("metadata").classList.add("hidden");
@@ -399,24 +432,22 @@
       }
     }
 
-    // Check download status
-    async function checkDownloadStatus(taskId) {
-      if (!user) {
-        showError("Please log in to check download status");
-        showView("login");
-        return;
-      }
+    // Download transcript
+    async function downloadTranscript(id, url) {
       try {
-        const res = await axiosInstance.get("/history");
-        const history = res.data;
-        const download = history.find(item => item.id === taskId);
-        if (download) {
-          showError(`Download Status for Task ID ${taskId}: ${download.status}`);
-        } else {
-          showError(`Download with Task ID ${taskId} not found`);
-        }
+        const res = await axiosInstance.get(`/download/transcript/${id}`, { responseType: "blob" });
+        const blob = new Blob([res.data], { type: "text/plain" });
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        const videoId = url.split('v=')[1]?.split('&')[0] || 'transcript';
+        link.download = `transcript_${videoId}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
       } catch (err) {
-        showError(err.response?.data?.detail || "Failed to fetch download status");
+        showError(err.response?.data?.detail || "Failed to download transcript");
       }
     }
 
@@ -429,26 +460,118 @@
       }
       try {
         const res = await axiosInstance.get("/history");
-        const history = res.data;
+        let history = res.data;
+        const thead = document.getElementById("history-head");
         const tbody = document.getElementById("history-body");
+
+        // Get filter values
+        const filterUrl = document.getElementById("filter-url").value.toLowerCase();
+        const filterStatus = document.getElementById("filter-status").value;
+        const filterDateStart = document.getElementById("filter-date-start").value;
+        const filterDateEnd = document.getElementById("filter-date-end").value;
+        const filterFilename = document.getElementById("filter-filename").value.toLowerCase();
+        const filterUserId = document.getElementById("filter-user-id").value;
+
+        // Show User ID filter for admins
+        if (user.is_admin) {
+          document.getElementById("filter-user-id").classList.remove("hidden");
+        } else {
+          document.getElementById("filter-user-id").classList.add("hidden");
+        }
+
+        // Apply filters
+        history = history.filter(item => {
+          const istDate = new Date(new Date(item.downloaded_at).getTime() + (5.5 * 60 * 60 * 1000));
+          const dateStr = istDate.toISOString().split("T")[0];
+          return (
+            (!filterUrl || item.url.toLowerCase().includes(filterUrl)) &&
+            (!filterStatus || item.status === filterStatus) &&
+            (!filterDateStart || dateStr >= filterDateStart) &&
+            (!filterDateEnd || dateStr <= filterDateEnd) &&
+            (!filterFilename || item.filename.toLowerCase().includes(filterFilename)) &&
+            (!filterUserId || (user.is_admin && item.user_id.toString() === filterUserId))
+          );
+        });
+
+        // Apply sorting
+        const sortColumn = sessionStorage.getItem("history-sort-column") || "downloaded_at";
+        const sortOrder = sessionStorage.getItem("history-sort-order") || "desc";
+        history.sort((a, b) => {
+          let valA = a[sortColumn], valB = b[sortColumn];
+          if (sortColumn === "downloaded_at") {
+            valA = new Date(a.downloaded_at).getTime();
+            valB = new Date(b.downloaded_at).getTime();
+          } else if (sortColumn === "user_id") {
+            valA = a.user_id || 0;
+            valB = b.user_id || 0;
+          } else {
+            valA = valA ? valA.toString().toLowerCase() : "";
+            valB = valB ? valB.toString().toLowerCase() : "";
+          }
+          return sortOrder === "asc" ? (valA < valB ? -1 : 1) : (valA > valB ? -1 : 1);
+        });
+
+        // Render table headers with sort indicators
+        thead.innerHTML = `
+          <tr class="bg-gray-200">
+            <th class="border p-2 cursor-pointer" onclick="sortHistory('url')">URL ${sortColumn === "url" ? (sortOrder === "asc" ? "▲" : "▼") : ""}</th>
+            <th class="border p-2 cursor-pointer" onclick="sortHistory('status')">Status ${sortColumn === "status" ? (sortOrder === "asc" ? "▲" : "▼") : ""}</th>
+            <th class="border p-2 cursor-pointer" onclick="sortHistory('downloaded_at')">Downloaded At ${sortColumn === "downloaded_at" ? (sortOrder === "asc" ? "▲" : "▼") : ""}</th>
+            <th class="border p-2 cursor-pointer" onclick="sortHistory('filename')">Filename ${sortColumn === "filename" ? (sortOrder === "asc" ? "▲" : "▼") : ""}</th>
+            ${user.is_admin ? `<th class="border p-2 cursor-pointer" onclick="sortHistory('user_id')">User ID ${sortColumn === "user_id" ? (sortOrder === "asc" ? "▲" : "▼") : ""}</th>` : ""}
+            <th class="border p-2">Transcript</th>
+          </tr>
+        `;
+
+        // Render table body
         tbody.innerHTML = "";
         history.forEach(item => {
           const utcDate = new Date(item.downloaded_at);
-          const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000)); // UTC to IST (+5:30)
+          const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
           const istString = istDate.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+          const videoId = item.url.split('v=')[1]?.split('&')[0] || 'unknown';
           const row = document.createElement("tr");
           row.innerHTML = `
             <td class="border p-2">${item.url}</td>
             <td class="border p-2">${item.status}</td>
             <td class="border p-2">${istString}</td>
             <td class="border p-2">${item.filename}</td>
-            ${user.is_admin ? `<td class="border p-2">${item.user_id}</td>` : ''}
+            ${user.is_admin ? `<td class="border p-2">${item.user_id}</td>` : ""}
+            <td class="border p-2">
+              ${item.status === "Completed" ? `<button onclick="downloadTranscript(${item.id}, '${item.url}')" class="text-blue-600 hover:underline">Download Transcript</button>` : "No Transcript"}
+            </td>
           `;
           tbody.appendChild(row);
+        });
+
+        // Reset filters
+        document.getElementById("reset-history-filters").onclick = () => {
+          document.getElementById("filter-url").value = "";
+          document.getElementById("filter-status").value = "";
+          document.getElementById("filter-date-start").value = "";
+          document.getElementById("filter-date-end").value = "";
+          document.getElementById("filter-filename").value = "";
+          document.getElementById("filter-user-id").value = "";
+          fetchHistory();
+        };
+
+        // Real-time filter updates
+        ["filter-url", "filter-status", "filter-date-start", "filter-date-end", "filter-filename", "filter-user-id"].forEach(id => {
+          document.getElementById(id).oninput = () => fetchHistory();
         });
       } catch (err) {
         showError(err.response?.data?.detail || "Failed to fetch history");
       }
+    }
+
+    // Sort history table
+    function sortHistory(column) {
+      const currentColumn = sessionStorage.getItem("history-sort-column") || "downloaded_at";
+      const currentOrder = sessionStorage.getItem("history-sort-order") || "desc";
+      const newOrder = currentColumn === column && currentOrder === "asc" ? "desc" : "asc";
+      sessionStorage.setItem("history-sort-column", column);
+      sessionStorage.setItem("history-sort-order", newOrder);
+      fetchHistory();
     }
 
     // Update profile
@@ -483,8 +606,53 @@
       }
       try {
         const res = await axiosInstance.get("/admin/users");
-        const users = res.data;
+        let users = res.data;
         const tbody = document.getElementById("admin-body");
+
+        // Get filter values
+        const filterId = document.getElementById("filter-id").value;
+        const filterEmail = document.getElementById("filter-email").value.toLowerCase();
+        const filterAdmin = document.getElementById("filter-admin").value;
+
+        // Apply filters
+        users = users.filter(u => {
+          return (
+            (!filterId || u.id.toString() === filterId) &&
+            (!filterEmail || u.email.toLowerCase().includes(filterEmail)) &&
+            (!filterAdmin || u.is_admin.toString() === filterAdmin)
+          );
+        });
+
+        // Apply sorting
+        const sortColumn = sessionStorage.getItem("admin-sort-column") || "id";
+        const sortOrder = sessionStorage.getItem("admin-sort-order") || "asc";
+        users.sort((a, b) => {
+          let valA = a[sortColumn], valB = b[sortColumn];
+          if (sortColumn === "is_admin") {
+            valA = a.is_admin ? "Yes" : "No";
+            valB = b.is_admin ? "Yes" : "No";
+          } else if (sortColumn === "id") {
+            valA = Number(valA);
+            valB = Number(valB);
+          } else {
+            valA = valA ? valA.toString().toLowerCase() : "";
+            valB = valB ? valB.toString().toLowerCase() : "";
+          }
+          return sortOrder === "asc" ? (valA < valB ? -1 : 1) : (valA > valB ? -1 : 1);
+        });
+
+        // Render table headers with sort indicators
+        const thead = document.getElementById("admin-head");
+        thead.innerHTML = `
+          <tr class="bg-gray-200">
+            <th class="border p-2 cursor-pointer" onclick="sortUsers('id')">ID ${sortColumn === "id" ? (sortOrder === "asc" ? "▲" : "▼") : ""}</th>
+            <th class="border p-2 cursor-pointer" onclick="sortUsers('email')">Email ${sortColumn === "email" ? (sortOrder === "asc" ? "▲" : "▼") : ""}</th>
+            <th class="border p-2 cursor-pointer" onclick="sortUsers('is_admin')">Admin ${sortColumn === "is_admin" ? (sortOrder === "asc" ? "▲" : "▼") : ""}</th>
+            <th class="border p-2">Actions</th>
+          </tr>
+        `;
+
+        // Render table body
         tbody.innerHTML = "";
         users.forEach(u => {
           const row = document.createElement("tr");
@@ -498,17 +666,39 @@
           `;
           tbody.appendChild(row);
         });
+
+        // Reset filters
+        document.getElementById("reset-admin-filters").onclick = () => {
+          document.getElementById("filter-id").value = "";
+          document.getElementById("filter-email").value = "";
+          document.getElementById("filter-admin").value = "";
+          fetchUsers();
+        };
+
+        // Real-time filter updates
+        ["filter-id", "filter-email", "filter-admin"].forEach(id => {
+          document.getElementById(id).oninput = () => fetchUsers();
+        });
       } catch (err) {
         showError(err.response?.data?.detail || "Failed to fetch users");
       }
+    }
+
+    // Sort users table
+    function sortUsers(column) {
+      const currentColumn = sessionStorage.getItem("admin-sort-column") || "id";
+      const currentOrder = sessionStorage.getItem("admin-sort-order") || "asc";
+      const newOrder = currentColumn === column && currentOrder === "asc" ? "desc" : "asc";
+      sessionStorage.setItem("admin-sort-column", column);
+      sessionStorage.setItem("admin-sort-order", newOrder);
+      fetchUsers();
     }
 
     // View user details (admin)
     async function viewUser(userId) {
       try {
         const res = await axiosInstance.get(`/admin/users/${userId}`);
-        const u = res.data;
-        showError(`User ID: ${u.id}, Email: ${u.email}, Admin: ${u.is_admin ? "Yes" : "No"}`);
+        showUserDetails(res.data);
       } catch (err) {
         showError(err.response?.data?.detail || "Failed to fetch user details");
       }

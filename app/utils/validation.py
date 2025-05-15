@@ -34,7 +34,7 @@ async def log_failure(session, url: str, user_id: int):
         url=url,
         status="Failed",
         downloaded_at=datetime.utcnow(),
-        filename="",
+        filename="N/A",
         user_id=user_id
 
     )
