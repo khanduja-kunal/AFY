@@ -1,7 +1,10 @@
 import os
 import requests
-from app.core.config import DEEPGRAM_API_KEY
+import logging
 
+logger = logging.getLogger(__name__)
+
+DEEPGRAM_API_KEY = 'ad9959932ed7b263626332a95f1410c97ba38696'
 TRANSCRIPT_DIR = "transcripts"
 os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
 
@@ -14,10 +17,7 @@ def transcribe_audio(audio_path: str, transcript_path: str) -> str:
         transcript_path (str): Path to save the transcript (e.g., 'transcripts/user1_video.txt').
     
     Returns:
-        str: Path to the saved transcript file.
-    
-    Raises:
-        Exception: If transcription fails (e.g., file not found, API error, empty transcript).
+        str: Path to the saved transcript file, or None if transcription fails.
     """
     try:
         if not os.path.exists(audio_path):
@@ -31,11 +31,11 @@ def transcribe_audio(audio_path: str, transcript_path: str) -> str:
         params = {
             "model": "nova-2",
             "punctuate": "true",
-            "language": "en",
-            "profanity_filter": "true",
-            "utterances": "false"
+            "utterances": "false",
+            "language": "en"
         }
 
+        logger.info(f"Sending Deepgram request for audio: {audio_path}")
         with open(audio_path, "rb") as audio_file:
             response = requests.post(api_url, headers=headers, params=params, data=audio_file)
 
@@ -44,13 +44,15 @@ def transcribe_audio(audio_path: str, transcript_path: str) -> str:
 
         transcript = response.json().get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])[0].get("transcript", "")
         if not transcript:
-            raise Exception("No transcript generated")
+            logger.warning("No transcript generated: Only English language transcription is supported")
+            return None
 
         os.makedirs(os.path.dirname(transcript_path), exist_ok=True)
         with open(transcript_path, "w", encoding="utf-8") as f:
             f.write(transcript)
-
+        logger.info(f"Deepgram transcript saved to: {transcript_path}, length: {len(transcript)}")
         return transcript_path
 
     except Exception as e:
-        raise Exception(f"Transcription failed: {str(e)}")
+        logger.error(f"Transcription failed: {str(e)}")
+        return None
